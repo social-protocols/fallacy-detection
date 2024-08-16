@@ -1,201 +1,91 @@
 using JSON3
-using OpenAI
+using SQLite
 
-OPENAI_API_KEY = ENV["OPENAI_API_KEY"]
-LLM = "gpt-4o-mini"
+function create_db(path::String)::SQLite.DB
+    db = SQLite.DB(path)
+    DBInterface.execute(db, """
+        CREATE TABLE IF NOT EXISTS test_cases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT
+            , content TEXT NOT NULL
+        )
+    """)
+    DBInterface.execute(db, """
+        CREATE TABLE IF NOT EXISTS human_annotated_fallacies (
+            test_case_id INTEGER
+            , label TEXT NOT NULL
+            , PRIMARY KEY (test_case_id, label)
+        )
+    """)
+    DBInterface.execute(db, """
+        CREATE TABLE IF NOT EXISTS gpt_detected_fallacies (
+            test_case_id INTEGER
+            , label TEXT NOT NULL
+            , reasoning TEXT NOT NULL
+            , probability REAL NOT NULL
+            , PRIMARY KEY (test_case_id, label)
+        )
+    """)
+    return db
+end
 
-# Function to read a JSONL file and return an array of parsed JSON objects
-function read_jsonl(file_path::String)
-    json_objects = []
+function get_db(path::String)::SQLite.DB
+    if isfile(path)
+        return SQLite.DB(path)
+    else
+        error("No database exists at path $path.")
+    end
+end
 
-    open(file_path, "r") do file
-        for line in eachline(file)
-            push!(json_objects, JSON3.read(line))
+function insert_test_cases(db::SQLite.DB, cases::Vector{String})
+    query = """
+        INSERT INTO test_cases (id, content)
+        VALUES (?, ?)
+    """
+    for (i, case) in enumerate(cases)
+        DBInterface.execute(db, query, (i, case))
+    end
+end
+
+function insert_fallacies(db::SQLite.DB, fallacies::Vector{Vector})
+    query = """
+        INSERT INTO gpt_detected_fallacies (test_case_id, label, reasoning, probability)
+        VALUES (?, ?, ?, ?)
+    """
+    for (i, detection) in enumerate(fallacies)
+        for flc in detection
+            DBInterface.execute(db, query, (i, flc[:name], flc[:analysis], flc[:probability]))
         end
     end
-
-    return json_objects
 end
 
-# Example usage
-file_path = "gold_standard_dataset.jsonl"
-json_objects = read_jsonl(file_path)
-
-struct TestDataPoint
-    text::String
-    labels::Vector{String}
-end
-
-function find_first_string(arr)
-    index = findfirst(x -> isa(x, String), arr)
-    return index !== nothing ? arr[index] : nothing
-end
-
-data = TestDataPoint[]
-
-for obj in json_objects
-    push!(
-        data,
-        TestDataPoint(
-            obj[:text],
-            [l[3] for l in obj[:labels]],
-        ),
-    )
-end
-
-# fallacies = unique(reduce(vcat, [d.labels for d in data]))
-
-# write JSON data
-# map(JSON3.write, data)
-
-function get_classification(text::String)::String
-
-    intro_message = Dict(
-        "role" => "system",
-        "name" => "evaluator",
-        "content" => """
-            Following is a post from a social media platform.
-            Your task is to detect whether or not there is a slippery slope fallacy in it.
-        """
-    )
-
-    test_message = Dict(
-        "role" => "user",
-        "name" => "socialmediauser",
-        "content" => text,
-    )
-
-    task_message = Dict(
-        "role" => "system",
-        "name" => "evaluator",
-        "content" => """
-            Please lay out your reasoning why there is or isn't a slippery slope fallacy present, then present your decision.
-        """
-    )
-
-    r = OpenAI.create_chat(
-        OPENAI_API_KEY, LLM,
-        [intro_message; test_message; task_message];
-        response_format = Dict(
-            "type" => "json_schema",
-            "json_schema" => Dict(
-                "name" => "fallacy_detection",
-                "strict" => true,
-                "schema" => Dict(
-                    "type" => "object",
-                    "additionalProperties" => false,
-                    "properties" => Dict(
-                        "detected_fallacies" => Dict(
-                            "type" => "array",
-                            "items" => Dict(
-                                "type" => "object",
-                                "additionalProperties" => false,
-                                "properties" => Dict(
-                                    "name" => Dict(
-                                        "type" => "string",
-                                        "enum" => [
-                                            "slippery slope",
-                                            "hasty generalization",
-                                            "false analogy",
-                                            "guilt by association",
-                                            "causal oversimplification",
-                                            "ad populum",
-                                            "nothing",
-                                            "circular reasoning",
-                                            "appeal to fear",
-                                            "ad hominem",
-                                            "appeal to (false) authority",
-                                            "false causality",
-                                            "fallacy of division",
-                                            "Appeal to Ridicule",
-                                            "appeal to worse problems",
-                                            "appeal to nature",
-                                            "false dilemma",
-                                            "straw man",
-                                            "appeal to anger",
-                                            "appeal to positive emotion",
-                                            "equivocation",
-                                            "to clean",
-                                            "appeal to tradition",
-                                            "appeal to pity",
-                                            "tu quoque",
-                                        ],
-                                    ),
-                                    "analysis" => Dict(
-                                        "type" => "string",
-                                        "description" => "Provide reasoning whether or not a given fallacy is present."
-                                    ),
-                                    "probability" => Dict(
-                                        "type" => "number",
-                                        "description" => "Probability of the fallacy being present."
-                                    )
-                                ),
-                                "required" => ["name", "analysis", "probability"]
-                            )
-                        )
-                    ),
-                    "required" => ["detected_fallacies"],
-                ),
-            )
-        )
-    )
-
-    return r.response[:choices][begin][:message][:content]
-end
-
-texts_only = [d.text for d in data]
-
-results = map(get_classification, texts_only)
-
-parsed_results = map(JSON.parse, results)
-
-final_results = Dict{String, Any}[]
-
-for (i, res) in enumerate(parsed_results)
-    dict = parsed_results[i]
-    dict["text"] = data[i].text
-    dict["true_labels"] = data[i].labels
-    push!(final_results, dict)
-end
-
-jsonl_results = map(JSON3.write, final_results)
-
-open("results.jsonl", "w") do file
-    for res in jsonl_results
-        write(file, res * "\n")
+function insert_true_labels(db::SQLite.DB, labels::Vector{Vector})
+    query = """
+        INSERT INTO human_annotated_fallacies (test_case_id, label)
+        VALUES (?, ?)
+    """
+    for (i, label) in enumerate(labels)
+        for l in label
+            DBInterface.execute(db, query, (i, l))
+        end
     end
 end
 
-evaluation = Dict{String, Any}[]
+include("db.jl")
 
-for res in final_results
-    e = Dict{String, Any}()
-    true_labels_size = length(res["true_labels"])
-    intersection = length(intersect([f["name"] for f in res["detected_fallacies"]], res["true_labels"]))
-    detected_labels_size = length(res["detected_fallacies"])
+rm("fallacy-detection.db")
 
-    e["text"] = res["text"]
-
-    e["detected_fallacies"] = [(f["name"], f["probability"]) for f in res["detected_fallacies"]]
-    e["true_labels"] = res["true_labels"]
-
-    e["true_positives"] = intersection
-    e["false_positives"] = detected_labels_size - intersection
-    e["false_negatives"] = true_labels_size - intersection
-
-    push!(evaluation, e)
+results = []
+open("results.jsonl") do file
+    global results = [JSON3.read(line) for line in eachline(file)]
 end
 
-for e in evaluation
-    println("--- text: ")
-    println(e["text"])
-    println("-------------------")
-    println("detected fallacies: ", e["detected_fallacies"])
-    println("true labels: ", e["true_labels"])
-    println("-------------------")
-    println("true positives: ", e["true_positives"])
-    println("false positives: ", e["false_positives"])
-    println("false negatives: ", e["false_negatives"])
-    println("===================")
-end
+db = create_db("fallacy-detection.db")
 
+contents = [res["text"] for res in results]
+insert_test_cases(db, contents)
+
+true_labels = [unique(vcat(res[:true_labels])) for res in results]
+insert_true_labels(db, true_labels)
+
+fallacies = [[Dict(fallacy) for fallacy in res["detected_fallacies"]] for res in results]
+insert_fallacies(db, fallacies)
