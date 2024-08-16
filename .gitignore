@@ -3,4 +3,5 @@ gold_standard_dataset.json
 *.jsonl
 *.db
 .direnv/
+.Rhistory
 

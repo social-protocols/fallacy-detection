@@ -20,6 +20,7 @@
                 packages = with super.rPackages; [
                   rmarkdown
                   DBI
+                  dbplyr
                   RSQLite
                   lubridate
                   stringr

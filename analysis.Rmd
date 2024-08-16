@@ -1,0 +1,69 @@
+---
+title: "Fallacy Detection"
+output: html_document
+date: "2024-08-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DBI)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+
+db <- function() {
+  con <- dbConnect(RSQLite::SQLite(), Sys.getenv("DATABASE_PATH"))
+  return(con)
+}
+
+con <- db()
+
+test_cases <- tbl(con, "test_cases") %>% data.frame()
+detected_fallacies <- tbl(con, "gpt_detected_fallacies") %>% data.frame()
+annotated_fallacies <-tbl(con, "human_annotated_fallacies") %>% data.frame()
+
+```
+
+
+```{r}
+
+annotated_fallacies %>% 
+  full_join(detected_fallacies, by = c("test_case_id", "label")) %>% 
+  arrange(desc(probability)) %>% 
+  select(-reasoning) %>% 
+  filter(!is.na(probability)) %>% 
+  filter(probability <= 1.0) %>% 
+  ggplot(aes(x = probability)) +
+    geom_histogram()
+
+```
+
+
+- greater than 0.5 => does it correspond to the test data?
+
+```{r}
+
+detected_fallacies_positives <-
+  detected_fallacies %>%  filter(probability >= 0.6)
+
+all_retrieved_instances <- detected_fallacies_positives %>% nrow()
+relevant_retrieved_instances <-
+  detected_fallacies_positives %>%
+  inner_join(annotated_fallacies, by = c("test_case_id", "label")) %>%
+  nrow()
+all_relevant_instances <- annotated_fallacies %>% nrow()
+
+precision <- relevant_retrieved_instances / all_retrieved_instances
+recall <- relevant_retrieved_instances / all_relevant_instances
+
+precision
+recall
+
+```
+
+```{r}
+
+```
+
+
