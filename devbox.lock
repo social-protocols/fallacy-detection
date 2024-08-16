@@ -1,0 +1,53 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "julia-bin@latest": {
+      "last_modified": "2024-07-31T08:48:38Z",
+      "resolved": "github:NixOS/nixpkgs/c3392ad349a5227f4a3464dce87bcc5046692fce#julia-bin",
+      "source": "devbox-search",
+      "version": "1.10.4",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/8vbbsrv1vs2b5l0axzd6x4rh7ifi79p3-julia-bin-1.10.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/8vbbsrv1vs2b5l0axzd6x4rh7ifi79p3-julia-bin-1.10.4"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/gm58c85q8z56wqxzkj7v819crcrx4rvc-julia-bin-1.10.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/gm58c85q8z56wqxzkj7v819crcrx4rvc-julia-bin-1.10.4"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/55wzwpy8d6wdgh1vd12s35zcfzwdl0da-julia-bin-1.10.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/55wzwpy8d6wdgh1vd12s35zcfzwdl0da-julia-bin-1.10.4"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/rhknxlapjyaxg924hh6wbprzazsmmkry-julia-bin-1.10.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/rhknxlapjyaxg924hh6wbprzazsmmkry-julia-bin-1.10.4"
+        }
+      }
+    }
+  }
+}
