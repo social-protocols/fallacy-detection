@@ -70,8 +70,6 @@ function insert_true_labels(db::SQLite.DB, labels::Vector{Vector})
     end
 end
 
-include("db.jl")
-
 rm("fallacy-detection.db")
 
 results = []
