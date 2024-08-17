@@ -20,6 +20,23 @@
                 packages = with super.rPackages; [
                   rmarkdown
                   DBI
+                  DT
+                  dbplyr
+                  RSQLite
+                  lubridate
+                  stringr
+                  dplyr
+                  tidyr
+                  ggplot2
+                  shiny
+                  shinydashboard
+                ];
+              };
+              rWithPackages = super.rWrapper.override{
+                packages = with super.rPackages; [
+                  rmarkdown
+                  DBI
+                  DT
                   dbplyr
                   RSQLite
                   lubridate
@@ -37,7 +54,9 @@
         defaultBuildInputs = with pkgs; [
           julia-bin
           sqlite-interactive
+          just
           rStudioWithPackages
+          rWithPackages
         ];
       in
       {

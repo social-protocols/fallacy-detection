@@ -61,9 +61,10 @@ precision
 recall
 
 ```
-
 ```{r}
-
+test_cases %>% 
+  mutate(content = stringr::str_sub(content, 1, 150)) %>% 
+  inner_join(detected_fallacies %>% rename(id = test_case_id), by = "id")
 ```
 
 
