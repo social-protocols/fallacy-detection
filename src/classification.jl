@@ -1,63 +1,21 @@
-# TODO: probably don't need two JSON libraries
-using JSON
-using JSON3
-using OpenAI
-
-OPENAI_API_KEY = ENV["OPENAI_API_KEY"]
-LLM = "gpt-4o-mini"
-
-# Function to read a JSONL file and return an array of parsed JSON objects
-function read_jsonl(file_path::String)
-    json_objects = []
-
-    open(file_path, "r") do file
-        for line in eachline(file)
-            push!(json_objects, JSON3.read(line))
-        end
+function classify(test_cases::Vector{TestCase}, secret_key::String, model::String)::Vector{ClassificationResult}
+    @info "Generating classification..."
+    parsed_results = test_cases |>
+        (cases) -> map((test_case) -> get_classification(test_case.text, secret_key, model), cases) |>
+        (cases) -> map(JSON.parse, cases)
+    return map(enumerate(zip(test_cases, parsed_results))) do (i, (case, result))
+        gpt_response_to_classification_result(i, case, result)
     end
-
-    return json_objects
 end
 
-# Example usage
-file_path = "gold_standard_dataset.jsonl"
-json_objects = read_jsonl(file_path)
-
-struct TestDataPoint
-    text::String
-    labels::Vector{String}
-end
-
-function find_first_string(arr)
-    index = findfirst(x -> isa(x, String), arr)
-    return index !== nothing ? arr[index] : nothing
-end
-
-data = TestDataPoint[]
-
-for obj in json_objects
-    push!(
-        data,
-        TestDataPoint(
-            obj[:text],
-            [l[3] for l in obj[:labels]],
-        ),
-    )
-end
-
-# fallacies = unique(reduce(vcat, [d.labels for d in data]))
-
-# write JSON data
-# map(JSON3.write, data)
-
-function get_classification(text::String)::String
-
+function get_classification(text::String, secret_key::String, model::String)::String
     intro_message = Dict(
         "role" => "system",
         "name" => "evaluator",
         "content" => """
-            Following is a post from a social media platform.
-            Your task is to detect whether or not there is a slippery slope fallacy in it.
+            You will be presented with a piece of content.
+            Your task is to detect whether or not there is a rhetorical fallacy in it.
+            This is the piece of content:
         """
     )
 
@@ -71,12 +29,12 @@ function get_classification(text::String)::String
         "role" => "system",
         "name" => "evaluator",
         "content" => """
-            Please lay out your reasoning why there is or isn't a slippery slope fallacy present, then present your decision.
+            Please lay out your reasoning why there is or isn't a rhetorical fallacy present, then present your decision.
         """
     )
 
     r = OpenAI.create_chat(
-        OPENAI_API_KEY, LLM,
+        secret_key, model,
         [intro_message; test_message; task_message];
         response_format = Dict(
             "type" => "json_schema",
@@ -102,7 +60,6 @@ function get_classification(text::String)::String
                                             "guilt by association",
                                             "causal oversimplification",
                                             "ad populum",
-                                            "nothing",
                                             "circular reasoning",
                                             "appeal to fear",
                                             "ad hominem",
@@ -117,7 +74,6 @@ function get_classification(text::String)::String
                                             "appeal to anger",
                                             "appeal to positive emotion",
                                             "equivocation",
-                                            "to clean",
                                             "appeal to tradition",
                                             "appeal to pity",
                                             "tu quoque",
@@ -129,7 +85,7 @@ function get_classification(text::String)::String
                                     ),
                                     "probability" => Dict(
                                         "type" => "number",
-                                        "description" => "Probability of the fallacy being present."
+                                        "description" => "Probability of the fallacy being present (between 0.0 and 1.0).",
                                     )
                                 ),
                                 "required" => ["name", "analysis", "probability"]
@@ -145,25 +101,10 @@ function get_classification(text::String)::String
     return r.response[:choices][begin][:message][:content]
 end
 
-texts_only = [d.text for d in data]
-
-results = map(get_classification, texts_only)
-
-parsed_results = map(JSON.parse, results)
-
-final_results = Dict{String, Any}[]
-
-for (i, res) in enumerate(parsed_results)
-    dict = parsed_results[i]
-    dict["text"] = data[i].text
-    dict["true_labels"] = data[i].labels
-    push!(final_results, dict)
-end
-
-jsonl_results = map(JSON3.write, final_results)
-
-open("results.jsonl", "w") do file
-    for res in jsonl_results
-        write(file, res * "\n")
+function gpt_response_to_classification_result(id::Int, test_case::TestCase, result::Dict{String, Any})::ClassificationResult
+    detected_fallacies = map(result["detected_fallacies"]) do fallacy_dict
+        Fallacy(fallacy_dict["name"], fallacy_dict["analysis"], fallacy_dict["probability"])
     end
+    return ClassificationResult(id, test_case, detected_fallacies)
 end
+
